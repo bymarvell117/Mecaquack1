@@ -701,6 +701,7 @@ function spawnSharks(){
     floatOff:Math.random()*Math.PI*2,
     speed:0.8+Math.random()*0.5,
     state:'patrol',slowTimer:0,
+    patrolTimer:Math.random()*2,wallCooldown:0,
   }));
 }
 
@@ -800,12 +801,18 @@ function updateSharks(dt){
     }
     if(s.hitTimer>0) s.hitTimer-=dt;
     if(s.slowTimer>0) s.slowTimer-=dt;
+    if(s.wallCooldown>0) s.wallCooldown-=dt;
     s.floatOff+=dt*2;
     const dx=P.x-s.x,dy=P.y-s.y,dist=Math.hypot(dx,dy);
     s.state=dist<220?'chase':'patrol';
     const spd=s.speed*(s.slowTimer>0?0.3:1);
     if(s.state==='patrol'){
-      s.angle+=dt*(Math.random()-0.5)*2;
+      // Change direction only every 1.5-3 s, not every frame
+      s.patrolTimer=(s.patrolTimer||0)-dt;
+      if(s.patrolTimer<=0){
+        s.angle+=(Math.random()-0.5)*Math.PI;
+        s.patrolTimer=1.5+Math.random()*1.5;
+      }
       s.vx=Math.cos(s.angle)*spd;s.vy=Math.sin(s.angle)*spd;
     } else {
       s.vx=(dx/dist)*spd*1.4;s.vy=(dy/dist)*spd*1.4;
@@ -813,8 +820,15 @@ function updateSharks(dt){
     GS.traps.forEach(tr=>{if(Math.hypot(s.x-tr.x,s.y-tr.y)<60) s.slowTimer=3;});
     const ttx=Math.floor((s.x+s.vx)/TILE),tty=Math.floor((s.y+s.vy)/TILE);
     const tt=world[tty]?.[ttx];
-    if(tt===undefined||tt===0||tt===8||tt===9) s.angle+=Math.PI/2;
-    else{s.x+=s.vx;s.y+=s.vy;}
+    if(tt===undefined||tt===0||tt===8||tt===9){
+      // Only bounce once per 0.4 s — prevents per-frame spinning at 60 Hz
+      if(s.wallCooldown<=0){
+        const homeAngle=Math.atan2(s.spawnY-s.y,s.spawnX-s.x);
+        s.angle=homeAngle+(Math.random()-0.5)*Math.PI*0.8;
+        s.patrolTimer=1;
+        s.wallCooldown=0.4;
+      }
+    } else{s.x+=s.vx;s.y+=s.vy;}
     if(dist<28&&P.invTimer<=0){
       if(GS.shieldActive){
         GS.shieldActive=false;spawnP(P.x,P.y,'#2196f3',12);
